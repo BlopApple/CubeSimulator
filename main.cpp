@@ -59,6 +59,13 @@
 #define SQUARE_TRANSLATE_DIST   (2 * SQUARE_LENGTH_HALVED + 5.0)    // Distance to translate the Sqaure away from the center of the Cube Face.
 
 #define EYE_INIT_DIST           (8.0 * CUBE_LENGTH_HALVED)  // Initial distance of eye from Cube's center.
+#define EYE_DIST_INCR           10.0                        // Distance increment when changing eye's distance.
+#define EYE_MIN_DIST            (6.0 * CUBE_LENGTH_HALVED)  // Min eye's distance from Cube's center.
+
+#define EYE_LATITUDE_INCR       2.0     // Degree increment when changing eye's latitude.
+#define EYE_MIN_LATITUDE        -85.0   // Min eye's latitude (in degrees).
+#define EYE_MAX_LATITUDE        85.0    // Max eye's latitude (in degrees).
+#define EYE_LONGITUDE_INCR      2.0     // Degree increment when changing eye's longitude.
 
 #define CLIP_PLANE_DIST         (2.5 * CUBE_LENGTH_HALVED)      // Distance of near or far clipping plane from the Cube's center
 
@@ -100,9 +107,17 @@ const GLubyte cubeColor[NUM_OF_FACES][3] = { { 255, 255, 255 },
 int winWidth = 800;     // Window width in pixels.
 int winHeight = 600;    // Window height in pixels.
 
-// Draw polygons in wireframe if true, otherwise polygons are filled.
-// For checking of proper colour placement on cube.
-bool drawWireframe = false;     
+// Define eye position.
+// Initial eye position is at [ 0, 0, EYE_INIT_DIST ] in the world frame,
+// looking at the world origin.
+// The up-vector is assumed to be [0, 1, 0].
+double eyeLatitude = 0;
+double eyeLongitude = 0;
+double eyeDistance = EYE_INIT_DIST;
+
+
+bool drawWireframe = false; // Draw polygons in wireframe if true, otherwise polygons are filled.
+bool drawAxes = false;       // Draw world coordinate frame axes if true.
 
 // The Cube
 int cube[NUM_OF_FACES][NUM_OF_SQUARES];
@@ -156,6 +171,31 @@ void DrawCube()
     }
 }
 
+// Draw the x, y, z axes. Each is drawn with the input length.
+// The x-axis is red, y-axis green, and z-axis blue.
+void DrawAxes(double length)
+{
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    glDisable(GL_LIGHTING);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    // x-axis.
+    glColor3f(1.0, 0.0, 0.0);
+    glVertex3d(0.0, 0.0, 0.0);
+    glVertex3d(length, 0.0, 0.0);
+    // y-axis.
+    glColor3f(0.0, 1.0, 0.0);
+    glVertex3d(0.0, 0.0, 0.0);
+    glVertex3d(0.0, length, 0.0);
+    // z-axis.
+    glColor3f(0.0, 0.0, 1.0);
+    glVertex3d(0.0, 0.0, 0.0);
+    glVertex3d(0.0, 0.0, length);
+    glEnd();
+    glPopAttrib();
+}
+
+
 /////////////////////////////////////////////////////////////////////////////
 // CALLBACK FUNCTIONS
 /////////////////////////////////////////////////////////////////////////////
@@ -167,13 +207,24 @@ void DisplayFunc(void) {
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
 
-    double zNear = EYE_INIT_DIST - CLIP_PLANE_DIST;
-    double zFar = EYE_INIT_DIST + CLIP_PLANE_DIST;
+    double zNear = eyeDistance - CLIP_PLANE_DIST;
+    double zFar = eyeDistance + CLIP_PLANE_DIST;
     gluPerspective(VERT_FOV, (double)winWidth / winHeight, zNear, zFar);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    gluLookAt(0, 0, EYE_INIT_DIST, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+
+    // Convert spherical coordinates in terms of eyeDistance, eyeLatitude and eyeLongitude 
+    // into cartesian coordinates.
+    double eyeX = eyeDistance * cos((eyeLatitude / 180.0) * PI) * sin((eyeLongitude / 180.0) * PI);
+    double eyeY = eyeDistance * sin((eyeLatitude / 180.0) * PI);
+    double eyeZ = eyeDistance * cos((eyeLatitude / 180.0) * PI) * cos((eyeLongitude / 180.0) * PI);
+    gluLookAt(eyeX, eyeY, eyeZ, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+
+    // Draw axes.
+    if (drawAxes) {
+        DrawAxes(2 * CUBE_LENGTH_HALVED);
+    }
 
     // Draw cube
     DrawCube();
@@ -203,11 +254,64 @@ void KeyboardFunc(unsigned char key, int x, int y) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glutPostRedisplay();
             break;
+
+        // Toggle axes.
+        case 'x':
+        case 'X':
+            drawAxes = !drawAxes;
+            glutPostRedisplay();
+            break;
+
+        // Reset to initial view.
+        case 'r':
+        case 'R':
+            eyeLatitude = 0.0;
+            eyeLongitude = 0.0;
+            eyeDistance = EYE_INIT_DIST;
+            glutPostRedisplay();
+            break;
     }
 }
 
 // The special key callback function.
-void SpecialKeyFunc(int key, int x, int y) {}
+void SpecialKeyFunc(int key, int x, int y) {
+    switch (key) {
+        case GLUT_KEY_LEFT:
+            eyeLongitude -= EYE_LONGITUDE_INCR;
+            if (eyeLongitude < -360.0) eyeLongitude += 360.0;
+            glutPostRedisplay();
+            break;
+
+        case GLUT_KEY_RIGHT:
+            eyeLongitude += EYE_LONGITUDE_INCR;
+            if (eyeLongitude > 360.0) eyeLongitude -= 360.0;
+            glutPostRedisplay();
+            break;
+
+        case GLUT_KEY_DOWN:
+            eyeLatitude -= EYE_LATITUDE_INCR;
+            if (eyeLatitude < EYE_MIN_LATITUDE) eyeLatitude = EYE_MIN_LATITUDE;
+            glutPostRedisplay();
+            break;
+
+        case GLUT_KEY_UP:
+            eyeLatitude += EYE_LATITUDE_INCR;
+            if (eyeLatitude > EYE_MAX_LATITUDE) eyeLatitude = EYE_MAX_LATITUDE;
+            glutPostRedisplay();
+            break;
+
+        case GLUT_KEY_PAGE_UP:
+            eyeDistance -= EYE_DIST_INCR;
+            if (eyeDistance < EYE_MIN_DIST) eyeDistance = EYE_MIN_DIST;
+            glutPostRedisplay();
+            break;
+
+        case GLUT_KEY_PAGE_DOWN:
+            eyeDistance += EYE_DIST_INCR;
+            glutPostRedisplay();
+            break;
+    }
+}
 
 // The reshape callback function.
 void ReshapeFunc(int w, int h)
@@ -246,7 +350,15 @@ int main(int argc, char** argv)
     glutTimerFunc(0, TimerFunc, 0);
 
     // Display user instructions in console window.
+    printf("Press LEFT ARROW to move eye left.\n");
+    printf("Press RIGHT ARROW to move eye right.\n");
+    printf("Press DOWN ARROW to move eye down.\n");
+    printf("Press UP ARROW to move eye up.\n");
+    printf("Press PAGE UP to move closer.\n");
+    printf("Press PAGE DN to move further.\n");
     printf("Press 'W' to toggle wireframe.\n");
+    printf("Press 'X' to toggle axes.\n");
+    printf("Press 'R' to reset to initial view.\n");
     printf("Press 'Q' to quit.\n\n");
 
     // Enter GLUT event loop.
