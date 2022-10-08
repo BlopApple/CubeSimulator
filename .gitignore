@@ -1,2 +1,6 @@
 # Debug files
 /Debug/
+
+# Visual Studio Build Files
+/.vs/
+CubeSimulator.vcxproj.user
