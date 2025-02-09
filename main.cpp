@@ -71,6 +71,10 @@
 
 #define VERT_FOV                45.0                            // Vertical FOV (in degrees) of the perspective camera.
 
+#define DESIRED_FPS             60                              // Approximate desired number of frames per second.
+#define NUM_OF_FRAMES           5                               // Number of frames in an animation.
+#define CUBE_ANGLE_INCR         (90.0 / (double) NUM_OF_FRAMES) // Amount of angle increment per frame.
+
 // Transformation Matrix Values
 const GLdouble squareTranslateDistances[NUM_OF_SQUARES][3] = { { -SQUARE_TRANSLATE_DIST, SQUARE_TRANSLATE_DIST, 0.0 },
                                                                { 0.0, SQUARE_TRANSLATE_DIST, 0.0 },
@@ -115,23 +119,145 @@ double eyeLatitude = 0;
 double eyeLongitude = 0;
 double eyeDistance = EYE_INIT_DIST;
 
-
+bool backfaceCulling = true;
 bool drawWireframe = false; // Draw polygons in wireframe if true, otherwise polygons are filled.
 bool drawAxes = false;       // Draw world coordinate frame axes if true.
+
+// For animating cube rotations
+bool playingAnimation = false;
+int frameNumber = 0;
+int rotatingFace;
+int rotatingDirection;
 
 // The Cube
 int cube[NUM_OF_FACES][NUM_OF_SQUARES];
 
 /////////////////////////////////////////////////////////////////////////////
-// Initializes the cube in the solved state.
+// CUBE FUNCTIONS
 /////////////////////////////////////////////////////////////////////////////
 
+// Initializes the cube in the solved state.
 void InitCube() {
     for (int face = 0; face < NUM_OF_FACES; face++) {
         for (int square = 0; square < NUM_OF_SQUARES; square++) {
             cube[face][square] = face;
         }
     }
+}
+
+// Update the cube's state from the given move.
+void UpdateCube()
+{
+    switch (rotatingFace)
+    {
+    case FACE_UP:
+        int temp[] = { cube[FACE_FRONT][0], cube[FACE_FRONT][1], cube[FACE_FRONT][2] };
+        if (rotatingDirection == CLOCKWISE) {
+            for (int i = 0; i < 3; i++) {
+                cube[FACE_FRONT][i] = cube[FACE_RIGHT][i];
+                cube[FACE_RIGHT][i] = cube[FACE_BACK][i];
+                cube[FACE_BACK][i] = cube[FACE_LEFT][i];
+                cube[FACE_LEFT][i] = temp[i];
+            }
+        }
+        else if (rotatingDirection == ANTI_CLOCKWISE)
+        {
+            for (int i = 0; i < 3; i++) {
+                cube[FACE_FRONT][i] = cube[FACE_LEFT][i];
+                cube[FACE_LEFT][i] = cube[FACE_BACK][i];
+                cube[FACE_BACK][i] = cube[FACE_RIGHT][i];
+                cube[FACE_RIGHT][i] = temp[i];
+            }
+        }
+        break;
+    }
+}
+
+// Checks if the current Square on the Face is affected by the current move.
+bool isRotating(int face, int square)
+{
+    switch (rotatingFace)
+    {
+    case FACE_UP:
+        switch (face)
+        {
+        case FACE_FRONT:
+            return (square == 0 || square == 1 || square == 2);
+        case FACE_RIGHT:
+            return (square == 0 || square == 1 || square == 2);
+        case FACE_BACK:
+            return (square == 0 || square == 1 || square == 2);
+        case FACE_LEFT:
+            return (square == 0 || square == 1 || square == 2);
+        }
+        break;
+    case FACE_FRONT:
+        switch (face)
+        {
+        case FACE_UP:
+            return (square == 6 || square == 7 || square == 8);
+        case FACE_LEFT:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_DOWN:
+            return (square == 0 || square == 1 || square == 2);
+        case FACE_RIGHT:
+            return (square == 0 || square == 3 || square == 6);
+        }
+        break;
+    case FACE_RIGHT:
+        switch (face)
+        {
+        case FACE_UP:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_FRONT:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_DOWN:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_BACK:
+            return (square == 0 || square == 3 || square == 6);
+        }
+        break;
+    case FACE_BACK:
+        switch (face)
+        {
+        case FACE_UP:
+            return (square == 0 || square == 1 || square == 2);
+        case FACE_RIGHT:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_DOWN:
+            return (square == 6 || square == 7 || square == 8);
+        case FACE_LEFT:
+            return (square == 0 || square == 3 || square == 6);
+        }
+        break;
+    case FACE_LEFT:
+        switch (face)
+        {
+        case FACE_UP:
+            return (square == 0 || square == 3 || square == 6);
+        case FACE_BACK:
+            return (square == 2 || square == 5 || square == 8);
+        case FACE_DOWN:
+            return (square == 0 || square == 3 || square == 6);
+        case FACE_FRONT:
+            return (square == 0 || square == 3 || square == 6);
+        }
+        break;
+    case FACE_DOWN:
+        switch (face)
+        {
+        case FACE_FRONT:
+            return (square == 6 || square == 7 || square == 8);
+        case FACE_LEFT:
+            return (square == 6 || square == 7 || square == 8);
+        case FACE_BACK:
+            return (square == 6 || square == 7 || square == 8);
+        case FACE_RIGHT:
+            return (square == 6 || square == 7 || square == 8);
+        }
+        break;
+    }
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -156,6 +282,12 @@ void DrawFace(int face)
     for (int square = 0; square < NUM_OF_SQUARES; square++) {
         glPushMatrix();
         glRotated(faceRotationValues[face][0], faceRotationValues[face][1], faceRotationValues[face][2], faceRotationValues[face][3]);
+        if (face == rotatingFace) {
+            glRotated((((double)rotatingDirection * frameNumber) * CUBE_ANGLE_INCR), 0.0, 0.0, 1.0);
+        }
+        else if (isRotating(face, square)) {
+            glRotated((((double)rotatingDirection * frameNumber) * CUBE_ANGLE_INCR), 0.0, 1.0, 0.0);
+        }
         glTranslated(squareTranslateDistances[square][0], squareTranslateDistances[square][1], squareTranslateDistances[square][2]);
         glTranslated(0.0, 0.0, CUBE_LENGTH_HALVED);
         DrawSquare(cubeColor[cube[face][square]]);
@@ -233,18 +365,41 @@ void DisplayFunc(void) {
 }
 
 // The timer callback function.
-void TimerFunc(int v) {}
+void TimerFunc(int v) {
+    if (frameNumber > 0 && frameNumber <= NUM_OF_FRAMES) {
+        glutPostRedisplay();
+        frameNumber++;
+        glutTimerFunc(1000.0 / DESIRED_FPS, TimerFunc, 0);
+    }
+    else {
+        playingAnimation = false;
+        frameNumber = 0;
+        UpdateCube();
+        glutPostRedisplay();
+    }
+}
+
+
+// Plays the animation of the current move.
+void playAnimation()
+{
+    playingAnimation = true;
+    frameNumber = 1;
+    glutTimerFunc(0, TimerFunc, 0);
+}
+
 
 // The keyboard callback function.
 void KeyboardFunc(unsigned char key, int x, int y) {
-    switch (key) {
-        // Quit program.
+    if (!playingAnimation) {
+        switch (key) {
+            // Quit program.
         case 'q':
         case 'Q':
             exit(0);
             break;
 
-        // Toggle between wireframe and filled polygons.
+            // Toggle between wireframe and filled polygons.
         case 'w':
         case 'W':
             drawWireframe = !drawWireframe;
@@ -255,14 +410,25 @@ void KeyboardFunc(unsigned char key, int x, int y) {
             glutPostRedisplay();
             break;
 
-        // Toggle axes.
+            // Toggle back-face culling.
+        case 'b':
+        case 'B':
+            backfaceCulling = !backfaceCulling;
+            if (backfaceCulling)
+                glEnable(GL_CULL_FACE);
+            else
+                glDisable(GL_CULL_FACE);
+            glutPostRedisplay();
+            break;
+
+            // Toggle axes.
         case 'x':
         case 'X':
             drawAxes = !drawAxes;
             glutPostRedisplay();
             break;
 
-        // Reset to initial view.
+            // Reset to initial view.
         case 'r':
         case 'R':
             eyeLatitude = 0.0;
@@ -270,46 +436,64 @@ void KeyboardFunc(unsigned char key, int x, int y) {
             eyeDistance = EYE_INIT_DIST;
             glutPostRedisplay();
             break;
+
+            // Rotate Up face in anti-clockwise direction
+        case 'o':
+        case 'O':
+            rotatingFace = FACE_UP;
+            rotatingDirection = ANTI_CLOCKWISE;
+            playAnimation();
+            break;
+
+            // Rotate Up face in clockwise direction
+        case 'p':
+        case 'P':
+            rotatingFace = FACE_UP;
+            rotatingDirection = CLOCKWISE;
+            playAnimation();
+            break;
+
+        }
     }
 }
 
 // The special key callback function.
 void SpecialKeyFunc(int key, int x, int y) {
     switch (key) {
-        case GLUT_KEY_LEFT:
-            eyeLongitude -= EYE_LONGITUDE_INCR;
-            if (eyeLongitude < -360.0) eyeLongitude += 360.0;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_LEFT:
+        eyeLongitude -= EYE_LONGITUDE_INCR;
+        if (eyeLongitude < -360.0) eyeLongitude += 360.0;
+        glutPostRedisplay();
+        break;
 
-        case GLUT_KEY_RIGHT:
-            eyeLongitude += EYE_LONGITUDE_INCR;
-            if (eyeLongitude > 360.0) eyeLongitude -= 360.0;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_RIGHT:
+        eyeLongitude += EYE_LONGITUDE_INCR;
+        if (eyeLongitude > 360.0) eyeLongitude -= 360.0;
+        glutPostRedisplay();
+        break;
 
-        case GLUT_KEY_DOWN:
-            eyeLatitude -= EYE_LATITUDE_INCR;
-            if (eyeLatitude < EYE_MIN_LATITUDE) eyeLatitude = EYE_MIN_LATITUDE;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_DOWN:
+        eyeLatitude -= EYE_LATITUDE_INCR;
+        if (eyeLatitude < EYE_MIN_LATITUDE) eyeLatitude = EYE_MIN_LATITUDE;
+        glutPostRedisplay();
+        break;
 
-        case GLUT_KEY_UP:
-            eyeLatitude += EYE_LATITUDE_INCR;
-            if (eyeLatitude > EYE_MAX_LATITUDE) eyeLatitude = EYE_MAX_LATITUDE;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_UP:
+        eyeLatitude += EYE_LATITUDE_INCR;
+        if (eyeLatitude > EYE_MAX_LATITUDE) eyeLatitude = EYE_MAX_LATITUDE;
+        glutPostRedisplay();
+        break;
 
-        case GLUT_KEY_PAGE_UP:
-            eyeDistance -= EYE_DIST_INCR;
-            if (eyeDistance < EYE_MIN_DIST) eyeDistance = EYE_MIN_DIST;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_PAGE_UP:
+        eyeDistance -= EYE_DIST_INCR;
+        if (eyeDistance < EYE_MIN_DIST) eyeDistance = EYE_MIN_DIST;
+        glutPostRedisplay();
+        break;
 
-        case GLUT_KEY_PAGE_DOWN:
-            eyeDistance += EYE_DIST_INCR;
-            glutPostRedisplay();
-            break;
+    case GLUT_KEY_PAGE_DOWN:
+        eyeDistance += EYE_DIST_INCR;
+        glutPostRedisplay();
+        break;
     }
 }
 
@@ -356,6 +540,8 @@ int main(int argc, char** argv)
     printf("Press UP ARROW to move eye up.\n");
     printf("Press PAGE UP to move closer.\n");
     printf("Press PAGE DN to move further.\n");
+    printf("Press 'O' to turn up face anticlockwise.\n");
+    printf("Press 'P' to turn up face clockwise.\n");
     printf("Press 'W' to toggle wireframe.\n");
     printf("Press 'X' to toggle axes.\n");
     printf("Press 'R' to reset to initial view.\n");
