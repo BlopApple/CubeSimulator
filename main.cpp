@@ -114,7 +114,7 @@ const GLubyte cubeColor[NUM_OF_FACES][3] = { { 255, 255, 255 },
                                              { 255, 88, 0 },
                                              { 255, 213, 0 } };
 
-const GLubyte overrideColor[3] = { 255, 255, 255 };
+const GLubyte overrideColor[3] = { 123, 123, 123 };
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -453,6 +453,19 @@ void UpdateCube()
     }
 }
 
+// Print the number of incorrect stickers (e.g. U move from solved state is 12 incorrect stickers)
+void PrintIncorrectCount()
+{
+    int incorrectCount = 0;
+    for (int i = 0; i < NUM_OF_FACES; i++) {
+        for (int j = 0; j < NUM_OF_SQUARES; j++) {
+            if (cube[i][j] != cube[i][4])
+                incorrectCount++;
+        }
+    }
+    printf("Incorrect count: %d\n", incorrectCount);
+}
+
 // Checks if the current Square on the Face is affected by the current move.
 bool isRotating(int face, int square)
 {
@@ -540,6 +553,19 @@ bool isRotating(int face, int square)
     return false;
 }
 
+void ScrambleCube() 
+{
+    int numMoves = rand() % 41 + 20;
+    for (int i = 0; i < numMoves; i++) {
+        int move = rand() % 7;
+        int direction = rand() % 2;
+
+        rotatingFace = move;
+        rotatingDirection = direction ? 1 : -1;
+        UpdateCube();
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // DRAWING FUNCTIONS
 /////////////////////////////////////////////////////////////////////////////
@@ -570,8 +596,10 @@ void DrawFace(int face)
         }
         glTranslated(squareTranslateDistances[square][0], squareTranslateDistances[square][1], squareTranslateDistances[square][2]);
         glTranslated(0.0, 0.0, CUBE_LENGTH_HALVED);
-        if (colourOverride)
+        if (colourOverride) {
+            glTranslated(0.0, 0.0, CUBE_LENGTH_HALVED * 0.05);
             DrawSquare(overrideColor);
+        }
         else
             DrawSquare(cubeColor[cube[face][square]]);
         glPopMatrix();
@@ -657,8 +685,8 @@ void TimerFunc(int v) {
     else {
         playingAnimation = false;
         frameNumber = 0;
-        UpdateCube();
-        PrintCube();
+        UpdateCube(); 
+        PrintIncorrectCount();
         glutPostRedisplay();
     }
 }
@@ -725,6 +753,13 @@ void KeyboardFunc(unsigned char key, int x, int y) {
         case 'i':
         case 'I':
             InitCube();
+            glutPostRedisplay();
+            break;
+
+            // Scramble the cube.
+        case '0':
+            ScrambleCube();
+            PrintIncorrectCount();
             glutPostRedisplay();
             break;
 
@@ -916,6 +951,7 @@ void Init(void)
 {
     glClearColor(0.0, 0.0, 0.0, 1.0); // Set black background color.
     glEnable(GL_DEPTH_TEST); // Use depth-buffer for hidden surface removal.
+    glEnable(GL_CULL_FACE);
     glShadeModel(GL_SMOOTH);
 }
 
@@ -950,6 +986,7 @@ int main(int argc, char** argv)
     printf("Press 'B' to toggle backface culling.\n");
     printf("Press 'R' to reset to initial view.\n");
     printf("Press 'I' to reset the cube.\n");
+    printf("Press '0' to scramble cube.\n");
     printf("Press 'M' to toggle colour mode.\n");
     printf("Press 'Q' to quit.\n\n");
     printf("Current Keybinds:\n");
